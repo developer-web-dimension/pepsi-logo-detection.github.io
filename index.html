@@ -105,88 +105,102 @@
         </video>
     </div>
 
-    <script>
-        // var socket = io.connect('http://localhost:8000');
-        var socket = io.connect('https://pepsi.dbaego.com/');
-        // https://pepsi-logo-detection.netlify.app
-        var videoFeed = document.getElementById("video-feed");
-        var promoOverlay = document.getElementById("promo-overlay");
-        var promoVideo = document.getElementById("promo-video");
-        var introOverlay = document.getElementById("intro-overlay");
-        var startButton = document.getElementById("start-button");
-        var isScanning = true;
-        var isSendingFrames = true;  // Flag to control frame sending
-        var centerImage = document.getElementById("center-image");
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
 
+<script>
+    // Add this function at the beginning of your script to generate unique client ID
+    function generateUUID() {
+        return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+            var r = Math.random() * 16 | 0, v = c == 'x' ? r : (r & 0x3 | 0x8);
+            return v.toString(16);
+        });
+    }
 
-        // Function to start everything on button click
-        startButton.addEventListener("click", function() {
-            promoVideo.load();
-            introOverlay.style.display = "none";
-            videoFeed.style.display = "block";
-            startCamera();
-            
+    // Generate a client ID when the page loads
+    var clientId = generateUUID();
+
+    // Connect to the socket server, passing the client ID as a query parameter
+    
+    // var socket = io.connect('https://pepsi.dbaego.com/', {
+    //     query: "clientId=" + clientId
+    // });
+
+    var socket = io.connect('http://localhost:8000',{
+        query: "clientID=" + clientId
+    });
+
+    var videoFeed = document.getElementById("video-feed");
+    var promoOverlay = document.getElementById("promo-overlay");
+    var promoVideo = document.getElementById("promo-video");
+    var introOverlay = document.getElementById("intro-overlay");
+    var startButton = document.getElementById("start-button");
+    var isScanning = true;
+    var isSendingFrames = true;  // Flag to control frame sending
+    var centerImage = document.getElementById("center-image");
+
+    startButton.addEventListener("click", function() {
+        promoVideo.load();
+        introOverlay.style.display = "none";
+        videoFeed.style.display = "block";
+        startCamera();
+    });
+
+    function playPromoVideo() {
+        promoOverlay.style.display = 'block';
+        promoVideo.muted = true;
+        promoVideo.currentTime = 0;
+        promoVideo.play().then(() => {
+            promoVideo.muted = false;
+        }).catch((error) => {
+            console.error("Error trying to play the video:", error);
         });
 
-        function playPromoVideo() {
-            promoOverlay.style.display = 'block';
-            promoVideo.muted = true;  // Ensure video starts muted to prevent autoplay issues
-            promoVideo.currentTime = 0;
-            promoVideo.play().then(() => {
-                promoVideo.muted = false;  // Unmute once playing
-                console.log("Promo video is playing with audio");
-            }).catch((error) => {
-                console.error("Error trying to play the video:", error);
-            });
+        promoVideo.onended = function() {
+            promoOverlay.style.display = 'none';
+            isScanning = true; 
+        };
+    }
 
-            promoVideo.onended = function() {
-                promoOverlay.style.display = 'none';
-                isScanning = true; // Resets scanning to allow for future detections
-            };
-            
-        }
+    function startCamera() {
+        navigator.mediaDevices.getUserMedia({
+            video: { facingMode: { ideal: "environment" } }
+        }).then(function(stream) {
+            videoFeed.srcObject = stream;
+            videoFeed.play();
+            centerImage.style.display = "block";
 
-        function startCamera() {
-            navigator.mediaDevices.getUserMedia({
-                video: {
-                    facingMode: { ideal: "environment" }  // Tries to use the back camera, but falls back to front if unavailable
-                }
-            }).then(function(stream) {
-                videoFeed.srcObject = stream;
-                videoFeed.play();
-                centerImage.style.display = "block";
-                
-                setInterval(function() {
-                    if (!isSendingFrames) return;  // Stop sending frames if flag is false
+            setInterval(function() {
+                if (!isSendingFrames) return;
 
-                    const canvas = document.createElement('canvas');
-                    canvas.width = videoFeed.videoWidth;
-                    canvas.height = videoFeed.videoHeight;
-                    const context = canvas.getContext('2d');
-                    context.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
-                    canvas.toBlob(function(blob) {
-                        const reader = new FileReader();
-                        reader.onloadend = function() {
-                            const base64Data = reader.result.split(',')[1];
-                            socket.emit('send_frame', { frame: base64Data });
-                        };
-                        reader.readAsDataURL(blob);
-                    }, 'image/jpeg', 0.8);  // Lower image quality for performance
-                }, 500); // Capture frame every 500ms to reduce load
-            }).catch(function(err) {
-                alert("Camera access is required for this app to work. Please enable camera permissions.");
-                console.error("Error accessing camera: ", err);
-            });
-        }
-
-        socket.on('object_detected', function(data) {
-            if (data.detected && isScanning) {
-                playPromoVideo();
-                isScanning = false;  // Prevent further detections during promo
-                isSendingFrames = false;  // Stop sending frames to backend
-                centerImage.style.display = "none";
-            }
+                const canvas = document.createElement('canvas');
+                canvas.width = videoFeed.videoWidth;
+                canvas.height = videoFeed.videoHeight;
+                const context = canvas.getContext('2d');
+                context.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
+                canvas.toBlob(function(blob) {
+                    const reader = new FileReader();
+                    reader.onloadend = function() {
+                        const base64Data = reader.result.split(',')[1];
+                        socket.emit('send_frame', { frame: base64Data });
+                    };
+                    reader.readAsDataURL(blob);
+                }, 'image/jpeg', 0.8);
+            }, 500);
+        }).catch(function(err) {
+            alert("Camera access is required for this app to work.");
+            console.error("Error accessing camera: ", err);
         });
-    </script>
+    }
+
+    socket.on('object_detected', function(data) {
+        if (data.detected && isScanning) {
+            playPromoVideo();
+            isScanning = false;
+            isSendingFrames = false;
+            centerImage.style.display = "none";
+        }
+    });
+</script>
+
 </body>
 </html>
