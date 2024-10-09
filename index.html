@@ -121,13 +121,13 @@
 
     // Connect to the socket server, passing the client ID as a query parameter
     
-    // var socket = io.connect('https://pepsi.dbaego.com/', {
-    //     query: "clientId=" + clientId
-    // });
-
-    var socket = io.connect('http://localhost:8000',{
-        query: "clientID=" + clientId
+    var socket = io.connect('https://pepsi.dbaego.com/', {
+        query: "clientId=" + clientId
     });
+
+    // var socket = io.connect('http://localhost:8000',{
+    //     query: "clientID=" + clientId
+    // });
 
     var videoFeed = document.getElementById("video-feed");
     var promoOverlay = document.getElementById("promo-overlay");
