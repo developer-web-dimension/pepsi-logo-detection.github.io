@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pepsi Logo Detection</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.0.0/socket.io.js"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            height: 100%;
+            background-color: white;
+            position: relative;
+            overflow: hidden;
+        }
+        #video-feed {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            z-index: 1;
+            display: none;
+            /* Ensures inline video on iPhones */
+            playsinline;
+        }
+        #promo-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 2;
+        }
+        #promo-video {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 80%;
+            max-width: 800px;
+            height: auto;
+        }
+        #intro-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: white;
+            z-index: 3;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+        #intro-image {
+            width: 60%;
+            max-width: 600px;
+        }
+        #start-button {
+            margin-top: 20px;
+            padding: 20px 80px;
+            font-size: 18px;
+            background-color: #007bff;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            background-color: #AC3392;
+        }
+        #start-button:hover {
+            background-color: #0056b3;
+        }
+        #center-image {
+            display: none;         
+            position: fixed;         
+            top: 50%;                
+            left: 50%;               
+            transform: translate(-50%, -50%); 
+            opacity: 0.5;           
+            z-index: 4;            
+        }
+
+    </style>
+</head>
+<body>
+    <div id="intro-overlay">
+        <img id="intro-image" src="WebD_texture.jpg" alt="WebD">
+        <button id="start-button" >Start</button>
+    </div>
+
+    <img id="center-image" src="pepsi-logo_opacity.png" alt="Centered Image" style="display: none;">
+
+
+    <video id="video-feed" playsinline></video>
+    <div id="promo-overlay">
+        <video id="promo-video" preload="auto" autoplay playsinline loop muted>
+            <source src="pepsi video.mp4" type="video/mp4">
+            Your browser does not support the video tag.
+        </video>
+    </div>
+
+    <script>
+        // var socket = io.connect('http://localhost:8000');
+        var socket = io.connect('https://pepsi.dbaego.com/');
+        // https://pepsi-logo-detection.netlify.app
+        var videoFeed = document.getElementById("video-feed");
+        var promoOverlay = document.getElementById("promo-overlay");
+        var promoVideo = document.getElementById("promo-video");
+        var introOverlay = document.getElementById("intro-overlay");
+        var startButton = document.getElementById("start-button");
+        var isScanning = true;
+        var isSendingFrames = true;  // Flag to control frame sending
+        var centerImage = document.getElementById("center-image");
+
+
+        // Function to start everything on button click
+        startButton.addEventListener("click", function() {
+            promoVideo.load();
+            introOverlay.style.display = "none";
+            videoFeed.style.display = "block";
+            startCamera();
+            
+        });
+
+        function playPromoVideo() {
+            promoOverlay.style.display = 'block';
+            promoVideo.muted = true;  // Ensure video starts muted to prevent autoplay issues
+            promoVideo.currentTime = 0;
+            promoVideo.play().then(() => {
+                promoVideo.muted = false;  // Unmute once playing
+                console.log("Promo video is playing with audio");
+            }).catch((error) => {
+                console.error("Error trying to play the video:", error);
+            });
+
+            promoVideo.onended = function() {
+                promoOverlay.style.display = 'none';
+                isScanning = true; // Resets scanning to allow for future detections
+            };
+            
+        }
+
+        function startCamera() {
+            navigator.mediaDevices.getUserMedia({
+                video: {
+                    facingMode: { ideal: "environment" }  // Tries to use the back camera, but falls back to front if unavailable
+                }
+            }).then(function(stream) {
+                videoFeed.srcObject = stream;
+                videoFeed.play();
+                centerImage.style.display = "block";
+                
+                setInterval(function() {
+                    if (!isSendingFrames) return;  // Stop sending frames if flag is false
+
+                    const canvas = document.createElement('canvas');
+                    canvas.width = videoFeed.videoWidth;
+                    canvas.height = videoFeed.videoHeight;
+                    const context = canvas.getContext('2d');
+                    context.drawImage(videoFeed, 0, 0, canvas.width, canvas.height);
+                    canvas.toBlob(function(blob) {
+                        const reader = new FileReader();
+                        reader.onloadend = function() {
+                            const base64Data = reader.result.split(',')[1];
+                            socket.emit('send_frame', { frame: base64Data });
+                        };
+                        reader.readAsDataURL(blob);
+                    }, 'image/jpeg', 0.8);  // Lower image quality for performance
+                }, 500); // Capture frame every 500ms to reduce load
+            }).catch(function(err) {
+                alert("Camera access is required for this app to work. Please enable camera permissions.");
+                console.error("Error accessing camera: ", err);
+            });
+        }
+
+        socket.on('object_detected', function(data) {
+            if (data.detected && isScanning) {
+                playPromoVideo();
+                isScanning = false;  // Prevent further detections during promo
+                isSendingFrames = false;  // Stop sending frames to backend
+                centerImage.style.display = "none";
+            }
+        });
+    </script>
+</body>
+</html>
