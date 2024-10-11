@@ -197,8 +197,10 @@
         }).then(function(stream) {
             videoFeed.srcObject = stream;
             videoFeed.play();
-            loading.style.display = 'none';
-            centerImage.style.display = "block";
+            videoFeed.oncanplay = function() {
+                    loading.style.display = 'none';  // Hide spinner when the video is ready to play
+                    centerImage.style.display = "block";
+                };
 
             setInterval(function() {
                 if (!isSendingFrames) return;
